@@ -1,0 +1,431 @@
+-- language: Lua, file: vanta_aero_premium.lua
+-- *VANTA Aero Premium - Hệ thống bay đỉnh cao, giao diện hiện đại*
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local LP = Players.LocalPlayer
+local PG = LP:WaitForChild("PlayerGui")
+
+-- Dọn dẹp UI cũ
+local old = PG:FindFirstChild("VantaAeroUI")
+if old then old:Destroy() end
+
+-- ============================================================
+-- TRẠNG THÁI
+-- ============================================================
+local State = {
+    Flying = false,
+    Mode = "Free", -- Free, Vertical, Speed
+    FlySpeed = 100,
+    Up = false,
+    Down = false,
+    Noclip = false,
+    AntiFling = true,
+    ToggleKey = Enum.KeyCode.F
+}
+
+local Constraints = {}
+local Connections = {}
+local NoclipConn = nil
+local AntiFlingConn = nil
+
+-- ============================================================
+-- GIAO DIỆN PREMIUM (DARK MODE, HIỆU ỨNG)
+-- ============================================================
+local gui = Instance.new("ScreenGui")
+gui.Name = "VantaAeroUI"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999
+gui.Parent = PG
+
+-- Nút Nổi (Floating Toggle)
+local floatBtn = Instance.new("TextButton")
+floatBtn.Size = UDim2.new(0, 50, 0, 50)
+floatBtn.Position = UDim2.new(0, 20, 0.4, 0)
+floatBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+floatBtn.Text = "🚀"
+floatBtn.TextSize = 24
+floatBtn.Font = Enum.Font.GothamBold
+floatBtn.AutoButtonColor = false
+floatBtn.Parent = gui
+Instance.new("UICorner", floatBtn).CornerRadius = UDim.new(1, 0)
+local fStroke = Instance.new("UIStroke", floatBtn)
+fStroke.Color = Color3.fromRGB(100, 200, 255)
+fStroke.Thickness = 2
+
+-- Main Frame
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 260, 0, 310)
+main.Position = UDim2.new(0.5, -130, 0.5, -155)
+main.BackgroundColor3 = Color3.fromRGB(16, 16, 22)
+main.BorderSizePixel = 0
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+local mStroke = Instance.new("UIStroke", main)
+mStroke.Color = Color3.fromRGB(100, 200, 255)
+mStroke.Thickness = 1.5
+
+floatBtn.MouseButton1Click:Connect(function()
+    main.Visible = not main.Visible
+end)
+
+-- Title Bar
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 45)
+titleBar.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
+titleBar.Parent = main
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12)
+
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1, -60, 1, 0)
+titleText.Position = UDim2.new(0, 16, 0, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "VANTA AERO"
+titleText.TextColor3 = Color3.fromRGB(100, 200, 255)
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 15
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.Parent = titleBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 26, 0, 26)
+closeBtn.Position = UDim2.new(1, -34, 0, 9)
+closeBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+closeBtn.Text = "×"
+closeBtn.TextColor3 = Color3.new(1,1,1)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 18
+closeBtn.Parent = titleBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- Nút Bật/Tắt Bay (Master Toggle)
+local toggleFlyBtn = Instance.new("TextButton")
+toggleFlyBtn.Size = UDim2.new(1, -32, 0, 42)
+toggleFlyBtn.Position = UDim2.new(0, 16, 0, 55)
+toggleFlyBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+toggleFlyBtn.Text = "BẬT BAY (F)"
+toggleFlyBtn.TextColor3 = Color3.fromRGB(180, 190, 200)
+toggleFlyBtn.Font = Enum.Font.GothamBold
+toggleFlyBtn.TextSize = 13
+toggleFlyBtn.AutoButtonColor = false
+toggleFlyBtn.Parent = main
+Instance.new("UICorner", toggleFlyBtn).CornerRadius = UDim.new(0, 8)
+local toggleStroke = Instance.new("UIStroke", toggleFlyBtn)
+toggleStroke.Color = Color3.fromRGB(50, 50, 70)
+
+-- Chọn Chế Độ Bay
+local modeText = Instance.new("TextLabel")
+modeText.Size = UDim2.new(1, -32, 0, 20)
+modeText.Position = UDim2.new(0, 16, 0, 105)
+modeText.BackgroundTransparency = 1
+modeText.Text = "CHẾ ĐỘ BAY"
+modeText.TextColor3 = Color3.fromRGB(150, 150, 160)
+modeText.Font = Enum.Font.GothamBold
+modeText.TextSize = 10
+modeText.TextXAlignment = Enum.TextXAlignment.Left
+modeText.Parent = main
+
+local modeContainer = Instance.new("Frame")
+modeContainer.Size = UDim2.new(1, -32, 0, 30)
+modeContainer.Position = UDim2.new(0, 16, 0, 125)
+modeContainer.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+modeContainer.Parent = main
+Instance.new("UICorner", modeContainer).CornerRadius = UDim.new(0, 6)
+
+local function createModeBtn(text, modeName, xScale, xOffset)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.33, -4, 1, -4)
+    btn.Position = UDim2.new(xScale, xOffset, 0, 2)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(180, 180, 190)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.Parent = modeContainer
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    
+    btn.MouseButton1Click:Connect(function()
+        for _, child in ipairs(modeContainer:GetChildren()) do
+            if child:IsA("TextButton") then
+                child.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+                child.TextColor3 = Color3.fromRGB(180, 180, 190)
+            end
+        end
+        btn.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+        btn.TextColor3 = Color3.fromRGB(0, 0, 0)
+        State.Mode = modeName
+    end)
+    return btn
+end
+
+local btnFree = createModeBtn("Tự Do", "Free", 0, 2)
+local btnVert = createModeBtn("Dọc", "Vertical", 0.33, 2)
+local btnSpeed = createModeBtn("Siêu Tốc", "Speed", 0.66, 2)
+
+-- Thanh Trượt Tốc Độ
+local speedFrame = Instance.new("Frame")
+speedFrame.Size = UDim2.new(1, -32, 0, 45)
+speedFrame.Position = UDim2.new(0, 16, 0, 165)
+speedFrame.BackgroundTransparency = 1
+speedFrame.Parent = main
+
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(1, 0, 0, 18)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "Tốc độ: " .. State.FlySpeed
+speedLabel.TextColor3 = Color3.fromRGB(180, 190, 200)
+speedLabel.Font = Enum.Font.GothamBold
+speedLabel.TextSize = 11
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.Parent = speedFrame
+
+local barBg = Instance.new("TextButton")
+barBg.Size = UDim2.new(1, 0, 0, 10)
+barBg.Position = UDim2.new(0, 0, 0, 24)
+barBg.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+barBg.Text = ""
+barBg.AutoButtonColor = false
+barBg.Parent = speedFrame
+Instance.new("UICorner", barBg).CornerRadius = UDim.new(1, 0)
+
+local barFill = Instance.new("Frame")
+barFill.Size = UDim2.new(State.FlySpeed / 300, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+barFill.BorderSizePixel = 0
+barFill.Parent = barBg
+Instance.new("UICorner", barFill).CornerRadius = UDim.new(1, 0)
+
+local draggingSlider = false
+barBg.MouseButton1Down:Connect(function() draggingSlider = true end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingSlider = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if draggingSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local rel = math.clamp((input.Position.X - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X, 0.05, 1)
+        local val = math.floor(rel * 300)
+        barFill.Size = UDim2.new(rel, 0, 1, 0)
+        speedLabel.Text = "Tốc độ: " .. val
+        State.FlySpeed = val
+    end
+end)
+
+-- Các Nút Bổ Trợ (Noclip, Anti-Fling)
+local btnContainer = Instance.new("Frame")
+btnContainer.Size = UDim2.new(1, -32, 0, 35)
+btnContainer.Position = UDim2.new(0, 16, 0, 220)
+btnContainer.BackgroundTransparency = 1
+btnContainer.Parent = main
+
+local function createToggleBtn(text, xPos, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.5, -4, 1, 0)
+    btn.Position = UDim2.new(xPos, 0, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+    btn.Text = text .. " [OFF]"
+    btn.TextColor3 = Color3.fromRGB(180, 180, 190)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.AutoButtonColor = false
+    btn.Parent = btnContainer
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    
+    local isOn = false
+    btn.MouseButton1Click:Connect(function()
+        isOn = not isOn
+        if isOn then
+            btn.BackgroundColor3 = Color3.fromRGB(30, 100, 70)
+            btn.TextColor3 = Color3.fromRGB(150, 255, 200)
+            btn.Text = text .. " [ON]"
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+            btn.TextColor3 = Color3.fromRGB(180, 180, 190)
+            btn.Text = text .. " [OFF]"
+        end
+        callback(isOn)
+    end)
+    return btn
+end
+
+local noclipBtn = createToggleBtn("Noclip", 0, function(on)
+    State.Noclip = on
+    if on then
+        NoclipConn = RunService.Stepped:Connect(function()
+            if LP.Character then
+                for _, v in pairs(LP.Character:GetDescendants()) do
+                    if v:IsA("BasePart") then v.CanCollide = false end
+                end
+            end
+        end)
+    else
+        if NoclipConn then NoclipConn:Disconnect(); NoclipConn = nil end
+    end
+end)
+
+local antiFlingBtn = createToggleBtn("Anti-Fling", 0.5, function(on)
+    State.AntiFling = on
+    if on then
+        AntiFlingConn = RunService.Heartbeat:Connect(function()
+            if LP.Character then
+                local root = LP.Character:FindFirstChild("HumanoidRootPart")
+                if root then
+                    root.Velocity = Vector3.new(root.Velocity.X, math.clamp(root.Velocity.Y, -100, 100), root.Velocity.Z)
+                end
+            end
+        end)
+    else
+        if AntiFlingConn then AntiFlingConn:Disconnect(); AntiFlingConn = nil end
+    end
+end)
+antiFlingBtn.MouseButton1Click:Fire() -- Bật mặc định
+
+-- Nút Mobile Lên/Xuống
+local mobileFrame = Instance.new("Frame")
+mobileFrame.Size = UDim2.new(1, -32, 0, 35)
+mobileFrame.Position = UDim2.new(0, 16, 0, 265)
+mobileFrame.BackgroundTransparency = 1
+mobileFrame.Parent = main
+
+local upBtn = Instance.new("TextButton")
+upBtn.Size = UDim2.new(0.5, -4, 1, 0)
+upBtn.Position = UDim2.new(0, 0, 0, 0)
+upBtn.BackgroundColor3 = Color3.fromRGB(35, 80, 50)
+upBtn.Text = "▲ BAY LÊN"
+upBtn.TextColor3 = Color3.fromRGB(150, 255, 150)
+upBtn.Font = Enum.Font.GothamBold
+upBtn.TextSize = 11
+upBtn.Parent = mobileFrame
+Instance.new("UICorner", upBtn).CornerRadius = UDim.new(0, 6)
+
+local downBtn = Instance.new("TextButton")
+downBtn.Size = UDim2.new(0.5, -4, 1, 0)
+downBtn.Position = UDim2.new(0.5, 0, 0, 0)
+downBtn.BackgroundColor3 = Color3.fromRGB(80, 35, 35)
+downBtn.Text = "▼ HẠ XUỐNG"
+downBtn.TextColor3 = Color3.fromRGB(255, 150, 150)
+downBtn.Font = Enum.Font.GothamBold
+downBtn.TextSize = 11
+downBtn.Parent = mobileFrame
+Instance.new("UICorner", downBtn).CornerRadius = UDim.new(0, 6)
+
+upBtn.MouseButton1Down:Connect(function() State.Up = true end)
+upBtn.MouseButton1Up:Connect(function() State.Up = false end)
+downBtn.MouseButton1Down:Connect(function() State.Down = true end)
+downBtn.MouseButton1Up:Connect(function() State.Down = false end)
+
+-- ============================================================
+-- LOGIC FLY (HEARTBEAT)
+-- ============================================================
+local function StopFly()
+    State.Flying = false
+    toggleFlyBtn.Text = "BẬT BAY (F)"
+    toggleFlyBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+    toggleFlyBtn.TextColor3 = Color3.fromRGB(180, 190, 200)
+    toggleStroke.Color = Color3.fromRGB(50, 50, 70)
+    
+    for _, conn in pairs(Connections) do
+        if conn then conn:Disconnect() end
+    end
+    Connections = {}
+    
+    for _, constraint in pairs(Constraints) do
+        if constraint then constraint:Destroy() end
+    end
+    Constraints = {}
+    
+    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = false end
+end
+
+local function StartFly()
+    local char = LP.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local root = char.HumanoidRootPart
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    
+    State.Flying = true
+    toggleFlyBtn.Text = "ĐANG BAY (ON)"
+    toggleFlyBtn.BackgroundColor3 = Color3.fromRGB(30, 100, 70)
+    toggleFlyBtn.TextColor3 = Color3.new(1, 1, 1)
+    toggleStroke.Color = Color3.fromRGB(0, 255, 150)
+    
+    if hum then hum.PlatformStand = true end
+    
+    local bv = Instance.new("BodyVelocity")
+    bv.Name = "VantaAeroBV"
+    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    bv.Velocity = Vector3.new(0, 0, 0)
+    bv.Parent = root
+    table.insert(Constraints, bv)
+    
+    local bg = Instance.new("BodyGyro")
+    bg.Name = "VantaAeroBG"
+    bg.P = 9e4
+    bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bg.CFrame = root.CFrame
+    bg.Parent = root
+    table.insert(Constraints, bg)
+    
+    local speed = 0
+    local conn = RunService.Heartbeat:Connect(function()
+        if not State.Flying or not root.Parent or (hum and hum.Health <= 0) then StopFly(); return end
+        
+        local cam = workspace.CurrentCamera
+        local move = Vector3.new()
+        
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.CFrame.RightVector end
+        
+        if State.Up then move += Vector3.new(0, 1, 0) end
+        if State.Down then move -= Vector3.new(0, 1, 0) end
+        
+        if move.Magnitude > 0 then
+            speed = speed + (State.FlySpeed * 0.1)
+            if speed > State.FlySpeed then speed = State.FlySpeed end
+        else
+            speed = speed - (State.FlySpeed * 0.1)
+            if speed < 0 then speed = 0 end
+        end
+        
+        if State.Mode == "Vertical" then
+            bv.Velocity = Vector3.new(0, (State.Up and 1 or 0) - (State.Down and 1 or 0), 0) * speed
+            bg.CFrame = CFrame.new(root.Position)
+        elseif State.Mode == "Speed" then
+            bv.Velocity = move.Unit * (speed * 3)
+            bg.CFrame = cam.CFrame
+        else -- Free
+            bv.Velocity = move.Unit * speed
+            bg.CFrame = cam.CFrame
+        end
+    end)
+    table.insert(Connections, conn)
+end
+
+toggleFlyBtn.MouseButton1Click:Connect(function()
+    if State.Flying then StopFly() else StartFly() end
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == State.ToggleKey then
+        if State.Flying then StopFly() else StartFly() end
+    end
+end)
+
+LP.CharacterAdded:Connect(function()
+    task.wait(1)
+    StopFly()
+end)
+
+-- Bật mặc định chế độ Free
+btnFree.MouseButton1Click:Fire()
